@@ -1,76 +1,72 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Калькулятор отделки бань", layout="wide")
+st.set_page_config(page_title="Мастер Отделки 2026", layout="wide")
 
-st.title("🏗 Расчет отделки парной")
+# --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ---
+if 'rooms' not in st.session_state:
+    st.session_state.rooms = []
 
-# --- БЛОК 1: ПАРАМЕТРЫ ПОМЕЩЕНИЯ ---
-st.header("1. Размеры помещения (м)")
-col1, col2, col3 = st.columns(3)
-with col1:
-    depth = st.number_input("Глубина (м)", value=2.0, step=0.1)
-with col2:
-    width = st.number_input("Ширина (м)", value=2.5, step=0.1)
-with col3:
-    height = st.number_input("Высота (м)", value=2.2, step=0.1)
+def add_room():
+    st.session_state.rooms.append({"name": f"Комната {len(st.session_state.rooms)+1}", "type": "Парная"})
 
-s_walls = 2 * (depth + width) * height
-s_ceiling = depth * width
-s_total = s_walls + s_ceiling
+st.title("🪓 Профессиональный расчет отделки")
 
-st.info(#33
-    f"**Площадь стен:** {s_walls:.2f} м² | "
-    f"**Площадь потолка:** {s_ceiling:.2f} м² | "
-    f"**Итого под отделку:** {s_total:.2f} м²"
-)
+# --- ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ---
+with st.sidebar:
+    st.header("Настройки объекта")
+    project_name = st.text_input("Название объекта", "Объект №1")
+    distance = st.number_input("Расстояние (км)", value=0)
+    days = st.number_input("Дней работы", value=1)
+    st.divider()
+    if st.button("➕ Добавить комнату"):
+        add_room()
 
-# --- БЛОК 2: РАСЧЕТ ВАГОНКИ (Тип В) ---
-st.header("2. Расчет вагонки (материалы с формулами)")
-margin = st.slider("Запас на подрезку (%)", 0, 20, 10) / 100
+# --- ОСНОВНОЙ ЦИКЛ ПО КОМНАТАМ ---
+total_project_cost = 0
 
-num_types = st.radio("Сколько видов вагонки используем?", [1, 2, 3], horizontal=True)
+for idx, room in enumerate(st.session_state.rooms):
+    with st.expander(f"🚪 {room['name']} - {room['type']}", expanded=True):
+        col_n, col_t, col_del = st.columns([3, 2, 1])
+        room['name'] = col_n.text_input("Название", value=room['name'], key=f"name_{idx}")
+        room['type'] = col_t.selectbox("Тип", ["Парная", "Душевая", "Зона отдыха"], key=f"type_{idx}")
+        if col_del.button("🗑️ Удалить", key=f"del_{idx}"):
+            st.session_state.rooms.pop(idx)
+            st.rerun()
 
-linings = []
-total_allocated_area = 0
+        # Размеры
+        c1, c2, c3 = st.columns(3)
+        depth = c1.number_input("Глубина (мм)", value=2000, step=10, key=f"d_{idx}")
+        width = c2.number_input("Ширина (мм)", value=2000, step=10, key=f"w_{idx}")
+        height = c3.number_input("Высота (мм)", value=2200, step=10, key=f"h_{idx}")
 
-for i in range(num_types):
-    st.subheader(f"Вид вагонки №{i+1}")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        name = st.text_input(f"Название {i+1}", value=f"Вагонка {i+1}")
-    with c2:
-        l_width = st.number_input(f"Ширина доски (мм)", value=90, key=f"w{i}") / 1000
-    with c3:
-        percent = st.number_input(f"% от общей площади", value=int(100/num_types), key=f"p{i}") / 100
-    with c4:
-        price = st.number_input(f"Цена за м² (руб)", value=1500, key=f"pr{i}")
-    
-    # Расчет для конкретного вида
-    area_needed = s_total * percent * (1 + margin)
-    cost = area_needed * price
-    linings.append({"Название": name, "Площадь (с запасом)": round(area_needed, 2), "Сумма": round(cost, 2)})
+        # Расчет площадей (как в вашем Excel)
+        s_walls = (2 * (depth + width) * height) / 1_000_000
+        s_ceiling = (depth * width) / 1_000_000
+        st.write(f"**Площадь стен:** {s_walls:.2f} м² | **Потолок:** {s_ceiling:.2f} м²")
 
-df_linings = pd.DataFrame(linings)
-st.table(df_linings)
+        if room['type'] == "Парная":
+            # Блок Вагонка (из листа 02 ДЕРЕВО)
+            st.subheader("Отделка деревом")
+            wood_type = st.selectbox("Материал", ["Липа", "Кедр", "Ольха", "Хвоя", "Абаш"], key=f"wood_{idx}")
+            profile = st.selectbox("Профиль", ["Штиль", "STS", "Евро", "Волна"], key=f"prof_{idx}")
+            
+            # Авто-расчет материалов типа В (Вагонка)
+            board_w = st.number_input("Ширина вагонки (мм)", value=135, key=f"bw_{idx}")
+            margin = 1.1 # 10% запас
+            count_boards = (s_walls + s_ceiling) / (board_w/1000 * 3) * margin # Пример для 3-метровой доски
+            st.success(f"Требуется вагонки: {count_boards:.0f} шт. (при длине 3м)")
 
-# --- БЛОК 3: РАБОТЫ И ФИКСИРОВАННЫЕ ТОВАРЫ (Тип А и Б) ---
-st.header("3. Дополнительные расходы")
-col_a, col_b = st.columns(2)
+        elif room['type'] == "Душевая":
+            # Блок Плитка (из листа 06 ПЛИТКА)
+            st.subheader("Плитка и гидроизоляция")
+            tile_price = st.number_input("Цена плитки за м²", value=1890, key=f"tile_{idx}")
+            glue_bags = round(s_walls / 4) # Пример: 1 мешок на 4м2
+            st.info(f"Плиточный клей: {glue_bags} мешков")
 
-with col_a:
-    st.subheader("А) Работы")
-    work_list = st.text_area("Список работ и цены (через запятую: Работа, Цена)", 
-                             "Монтаж каркаса, 500\nОбшивка вагонкой, 800\nШлифовка, 200")
-
-with col_b:
-    st.subheader("Б) Готовые товары")
-    fixed_list = st.text_area("Материалы (через запятую: Название, Цена)", 
-                              "Дверь стеклянная, 15000\nПечь, 45000\nКамни (уп), 1200")
-
-# --- ИТОГО ---
+# --- ИТОГОВЫЙ ОТЧЕТ ---
 st.divider()
-total_linings = df_linings["Сумма"].sum()
-st.subheader(f"Предварительная стоимость материалов (вагонка): {total_linings:,.2f} руб.")
-
-st.caption("Этот расчет можно сохранить в PDF или отправить ссылкой клиенту.")
+st.header("Итого по объекту")
+# Здесь будет суммирование всех комнат, работ и ГСМ
+st.write(f"Общая стоимость по объекту {project_name}: **0.00 руб.**")
+st.caption("Данные подтянутся автоматически после заполнения всех цен в комнатах.")
