@@ -1,72 +1,89 @@
 import streamlit as st
-import pandas as pd
+import math
 
-st.set_page_config(page_title="Мастер Отделки 2026", layout="wide")
+st.set_page_config(page_title="Калькулятор Бани 2026", layout="wide")
 
-# --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ---
-if 'rooms' not in st.session_state:
-    st.session_state.rooms = []
+st.title("🧖‍♂️ Профессиональный расчет: Парная + Печь + Полки")
 
-def add_room():
-    st.session_state.rooms.append({"name": f"Комната {len(st.session_state.rooms)+1}", "type": "Парная"})
-
-st.title("🪓 Профессиональный расчет отделки")
-
-# --- ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ---
+# --- БЛОК 1: ПОМЕЩЕНИЕ ---
 with st.sidebar:
-    st.header("Настройки объекта")
-    project_name = st.text_input("Название объекта", "Объект №1")
-    distance = st.number_input("Расстояние (км)", value=0)
-    days = st.number_input("Дней работы", value=1)
+    st.header("📏 Размеры парной")
+    L = st.number_input("Глубина (мм)", value=2870)
+    W = st.number_input("Ширина (мм)", value=3500)
+    H = st.number_input("Высота (мм)", value=2600)
+    
     st.divider()
-    if st.button("➕ Добавить комнату"):
-        add_room()
+    dist = st.number_input("Расстояние до объекта (км)", value=50)
+    gsm_price = st.number_input("Цена бензина (руб/л)", value=65)
 
-# --- ОСНОВНОЙ ЦИКЛ ПО КОМНАТАМ ---
-total_project_cost = 0
+# --- БЛОК 2: ПОЛКИ (Новая логика) ---
+st.header("🪵 Расчет полков")
+num_levels = st.radio("Количество уровней полков", [1, 2, 3], horizontal=True)
 
-for idx, room in enumerate(st.session_state.rooms):
-    with st.expander(f"🚪 {room['name']} - {room['type']}", expanded=True):
-        col_n, col_t, col_del = st.columns([3, 2, 1])
-        room['name'] = col_n.text_input("Название", value=room['name'], key=f"name_{idx}")
-        room['type'] = col_t.selectbox("Тип", ["Парная", "Душевая", "Зона отдыха"], key=f"type_{idx}")
-        if col_del.button("🗑️ Удалить", key=f"del_{idx}"):
-            st.session_state.rooms.pop(idx)
-            st.rerun()
+levels_data = []
+total_polki_len = 0
 
-        # Размеры
-        c1, c2, c3 = st.columns(3)
-        depth = c1.number_input("Глубина (мм)", value=2000, step=10, key=f"d_{idx}")
-        width = c2.number_input("Ширина (мм)", value=2000, step=10, key=f"w_{idx}")
-        height = c3.number_input("Высота (мм)", value=2200, step=10, key=f"h_{idx}")
+cols = st.columns(num_levels)
+for i in range(num_levels):
+    with cols[i]:
+        st.subheader(f"Уровень {i+1}")
+        l_len = st.number_input(f"Длина полка {i+1} (мм)", value=L, key=f"llen_{i}")
+        l_width = st.number_input(f"Ширина полка {i+1} (мм)", value=800 if i==0 else 400, key=f"lwid_{i}")
+        board_w = st.selectbox(f"Ширина доски", [95, 120, 140, 190], index=0, key=f"bw_{i}")
+        gap = 5 # зазор между досками
+        
+        # Расчет количества досок на настил
+        boards_count = math.ceil(l_width / (board_w + gap))
+        
+        # Торцевые доски (запрос пользователя)
+        end_boards = st.selectbox("Торцевые доски (с торца)", [0, 1, 2], key=f"eb_{i}")
+        
+        total_boards = boards_count + end_boards
+        st.info(f"Итого досок: {total_boards} шт.")
+        levels_data.append({"len": l_len, "count": total_boards})
 
-        # Расчет площадей (как в вашем Excel)
-        s_walls = (2 * (depth + width) * height) / 1_000_000
-        s_ceiling = (depth * width) / 1_000_000
-        st.write(f"**Площадь стен:** {s_walls:.2f} м² | **Потолок:** {s_ceiling:.2f} м²")
+# --- БЛОК 3: ПЕЧЬ И ДЫМОХОД (Из ваших листов 07 и 08) ---
+st.header("🔥 Печь и Дымоход")
+col_p1, col_p2 = st.columns(2)
 
-        if room['type'] == "Парная":
-            # Блок Вагонка (из листа 02 ДЕРЕВО)
-            st.subheader("Отделка деревом")
-            wood_type = st.selectbox("Материал", ["Липа", "Кедр", "Ольха", "Хвоя", "Абаш"], key=f"wood_{idx}")
-            profile = st.selectbox("Профиль", ["Штиль", "STS", "Евро", "Волна"], key=f"prof_{idx}")
-            
-            # Авто-расчет материалов типа В (Вагонка)
-            board_w = st.number_input("Ширина вагонки (мм)", value=135, key=f"bw_{idx}")
-            margin = 1.1 # 10% запас
-            count_boards = (s_walls + s_ceiling) / (board_w/1000 * 3) * margin # Пример для 3-метровой доски
-            st.success(f"Требуется вагонки: {count_boards:.0f} шт. (при длине 3м)")
+with col_p1:
+    stove_type = st.selectbox("Тиp печи", ["Дровяная (сталь)", "Дровяная (чугун)", "Электрическая", "Газовая"])
+    has_portal = st.checkbox("Нужен кирпичный портал?")
+    has_stones = st.checkbox("Камни для печи (с укладкой)")
+    has_fence = st.checkbox("Ограждение печи")
 
-        elif room['type'] == "Душевая":
-            # Блок Плитка (из листа 06 ПЛИТКА)
-            st.subheader("Плитка и гидроизоляция")
-            tile_price = st.number_input("Цена плитки за м²", value=1890, key=f"tile_{idx}")
-            glue_bags = round(s_walls / 4) # Пример: 1 мешок на 4м2
-            st.info(f"Плиточный клей: {glue_bags} мешков")
+with col_p2:
+    has_chimney = st.toggle("Включить дымоход в расчет")
+    if has_chimney:
+        chimney_type = st.radio("Класс дымохода", ["Эконом", "Стандарт", "Премиум"])
+        chimney_len = st.number_input("Высота дымохода (м)", value=4.0)
 
-# --- ИТОГОВЫЙ ОТЧЕТ ---
-st.divider()
-st.header("Итого по объекту")
-# Здесь будет суммирование всех комнат, работ и ГСМ
-st.write(f"Общая стоимость по объекту {project_name}: **0.00 руб.**")
-st.caption("Данные подтянутся автоматически после заполнения всех цен в комнатах.")
+# --- БЛОК 4: РАБОТЫ (Автоматизация на основе выбора) ---
+st.header("🛠 Список работ")
+
+base_works = [
+    {"name": "Монтаж каркаса и вагонки", "price": 1650, "unit": "м2", "val": (2*(L+W)*H + L*W)/1000000},
+    {"name": "Монтаж полков", "price": 35000, "unit": "компл", "val": 1},
+]
+
+if has_portal:
+    base_works.append({"name": "Изготовление портала печи", "price": 18000, "unit": "шт", "val": 1})
+if has_stones:
+    base_works.append({"name": "Отмывка и укладка камней", "price": 1500, "unit": "шт", "val": 1})
+if has_chimney:
+    base_works.append({"name": "Монтаж дымохода", "price": 15000, "unit": "шт", "val": 1})
+
+work_df = pd.DataFrame(base_works)
+work_df['Итого'] = work_df['price'] * work_df['val']
+st.table(work_df[['name', 'val', 'unit', 'price', 'Итого']])
+
+# --- ИТОГО ---
+total_sum = work_df['Итого'].sum()
+st.sidebar.metric("ОБЩАЯ СМЕТА", f"{total_sum:,.0f} руб.")
+
+if st.button("📥 Сформировать отчет для WhatsApp"):
+    report = f"Заказ: {L}x{W}x{H}\n"
+    report += f"Полки: {num_levels} уровня\n"
+    report += f"Печь: {stove_type}\n"
+    report += f"ИТОГО: {total_sum:,.0f} руб."
+    st.text_area("Скопируйте этот текст:", report)
